@@ -21,6 +21,7 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import PageHeader from '../components/ui/PageHeader'
 import { runSimulation } from '../services/simulationService'
+import IsometricFloodMap from '../components/simulation/IsometricFloodMap'
 
 const PRESETS = [
   {
@@ -310,6 +311,12 @@ export default function SimulationPage() {
 
         {/* Right Column: Dynamic Simulation Results (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
+          {/* Live 3D Tactical Elevation & Flood Inundation Model */}
+          <IsometricFloodMap
+            severity={Number(form.disaster_severity)}
+            blockedRoads={Number(form.blocked_roads)}
+            affectedPop={Number(form.affected_population)}
+          />
           {error && (
             <div className="p-4 rounded-xl border border-red-500/40 bg-red-950/40 text-red-200 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
