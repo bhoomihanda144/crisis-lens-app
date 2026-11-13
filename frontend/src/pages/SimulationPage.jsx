@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { runSimulation } from '../services/simulationService';
 
@@ -66,3 +67,14 @@ export default function SimulationPage() {
     </div>
   );
 }
+
+
+      
+  
+      
+
+            
+                  
+
+
+
