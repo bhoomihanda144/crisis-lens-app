@@ -21,6 +21,32 @@ export default function ReportForm({ open, onClose, onCreated }) {
   const [forwardedFrom, setForwardedFrom] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [detectingLoc, setDetectingLoc] = useState(false)
+
+  function autoDetectLocation() {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.')
+      return
+    }
+    setDetectingLoc(true)
+    setError('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({
+          label: 'Current Device GPS Location',
+          lat: pos.coords.latitude.toFixed(4),
+          lng: pos.coords.longitude.toFixed(4),
+        })
+        setPreset('custom')
+        setDetectingLoc(false)
+      },
+      () => {
+        setError('Location permission denied or unavailable. Using preset instead.')
+        setDetectingLoc(false)
+      },
+      { timeout: 8000 }
+    )
+  }
 
   function choosePreset(key) {
     setPreset(key)
@@ -92,15 +118,25 @@ export default function ReportForm({ open, onClose, onCreated }) {
             <input value={sourceName} onChange={(e) => setSourceName(e.target.value)} className={field} />
           </label>
         </div>
-        <label className="block text-text-primary">
-          Location
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-text-primary text-sm">Location</span>
+            <button
+              type="button"
+              disabled={detectingLoc}
+              onClick={autoDetectLocation}
+              className="text-xs text-accent hover:underline font-medium"
+            >
+              📍 {detectingLoc ? 'Detecting GPS...' : 'Auto-Detect GPS'}
+            </button>
+          </div>
           <select value={preset} onChange={(e) => choosePreset(e.target.value)} className={field}>
             <option value="bellandur">Lake Road, Bellandur</option>
             <option value="koramangala">4th Block, Koramangala</option>
             <option value="whitefield">Main Road, Whitefield</option>
             <option value="custom">Custom location…</option>
           </select>
-        </label>
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block text-text-primary sm:col-span-3">
             Location name
