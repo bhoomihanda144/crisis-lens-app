@@ -316,6 +316,8 @@ export default function SimulationPage() {
             severity={Number(form.disaster_severity)}
             blockedRoads={Number(form.blocked_roads)}
             affectedPop={Number(form.affected_population)}
+            result={result}
+            loading={loading}
           />
           {error && (
             <div className="p-4 rounded-xl border border-red-500/40 bg-red-950/40 text-red-200 flex items-start gap-3">

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Waves, ShieldAlert, Navigation2, Compass, Layers } from 'lucide-react'
+import { Waves, ShieldAlert, Compass, Layers, CheckCircle2, AlertOctagon } from 'lucide-react'
 
 // Topographical tile definitions: [gridX, gridY, baseElevation, label, type]
 // type: 'water' | 'lowland' | 'road' | 'hill' | 'hospital' | 'residential'
@@ -32,7 +32,13 @@ const TERRAIN_TILES = [
   { x: 4, y: 0, z: 2.5, type: 'hill', label: 'Higher Ground Camp' },
 ]
 
-export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affectedPop = 12000 }) {
+export default function IsometricFloodMap({
+  severity = 3,
+  blockedRoads = 2,
+  affectedPop = 12000,
+  result = null,
+  loading = false,
+}) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -77,7 +83,6 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
       const elevationScale = 34
 
       // Current dynamic water level (based on 1-5 severity)
-      // severity 1 = 0.5, severity 5 = 2.1
       const targetWaterHeight = 0.35 + severity * 0.35
       const waveOffset = Math.sin(tick * 1.5) * 0.04
       const currentWaterHeight = targetWaterHeight + waveOffset
@@ -152,6 +157,10 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
       // Sort tiles from back to front for correct painter's depth
       const sortedTiles = [...TERRAIN_TILES].sort((a, b) => a.x + a.y - (b.x + b.y))
 
+      // Keep track of hospital and vulnerable sectors for evacuation path rendering
+      let hospitalPos = null
+      let vulnerablePos = null
+
       // Render terrain blocks
       sortedTiles.forEach((tile) => {
         const isSubmerged = currentWaterHeight >= tile.z
@@ -165,7 +174,7 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
           leftColor = '#044e39'
           rightColor = '#022c22'
         } else if (tile.type === 'road') {
-          if (isSubmerged) {
+          if (isSubmerged || (blockedRoads >= 2 && tile.z < 1.0)) {
             topColor = '#b91c1c' // Flooded blocked arterial
             leftColor = '#7f1d1d'
             rightColor = '#450a0a'
@@ -190,16 +199,17 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
 
         const faces = drawIsoPrism(tile.x, tile.y, tile.z, topColor, leftColor, rightColor)
 
-        // Overlay pins / 3D indicators on top faces
         if (tile.type === 'hospital') {
+          hospitalPos = faces.center
           ctx.fillStyle = '#10b981'
           ctx.beginPath()
           ctx.arc(faces.center.x, faces.center.y, 4, 0, Math.PI * 2)
           ctx.fill()
           ctx.fillStyle = '#ffffff'
           ctx.font = 'bold 9px monospace'
-          ctx.fillText('HOSPITAL', faces.center.x - 22, faces.center.y - 8)
+          ctx.fillText('HOSPITAL (SAFE)', faces.center.x - 35, faces.center.y - 8)
         } else if (tile.type === 'residential' && isSubmerged) {
+          if (!vulnerablePos) vulnerablePos = faces.center
           // Submerged residential warning beacon
           ctx.fillStyle = '#ef4444'
           ctx.beginPath()
@@ -208,10 +218,20 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
           ctx.fillStyle = '#fca5a5'
           ctx.font = 'bold 8px monospace'
           ctx.fillText('EVACUATE', faces.center.x - 20, faces.center.y - 10)
-        } else if (tile.type === 'road' && isSubmerged) {
+        } else if (tile.type === 'road' && (isSubmerged || (blockedRoads >= 2 && tile.z < 1.0))) {
           ctx.fillStyle = '#f97316'
           ctx.font = 'bold 8px monospace'
           ctx.fillText('CUT-OFF', faces.center.x - 18, faces.center.y - 6)
+
+          // 3D Barrier Crossbars
+          ctx.strokeStyle = '#ef4444'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.moveTo(faces.center.x - 8, faces.center.y - 4)
+          ctx.lineTo(faces.center.x + 8, faces.center.y + 4)
+          ctx.moveTo(faces.center.x + 8, faces.center.y - 4)
+          ctx.lineTo(faces.center.x - 8, faces.center.y + 4)
+          ctx.stroke()
         }
       })
 
@@ -244,6 +264,65 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
         ctx.restore()
       }
 
+      // 3D Rescue Units & Evacuation Path when Simulation Results are Present
+      if (result) {
+        ctx.save()
+        // Draw Animated 3D Rescue Boat Units deployed at perimeter
+        const boat1 = toIso(1.5, 2.5, currentWaterHeight + 0.05)
+        const boat2 = toIso(2.5, 1.5, currentWaterHeight + 0.05)
+
+        const drawBoatMarker = (pt, label) => {
+          ctx.fillStyle = '#22d3ee'
+          ctx.beginPath()
+          ctx.arc(pt.x, pt.y, 6 + Math.sin(tick * 4) * 1.5, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#083344'
+          ctx.beginPath()
+          ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#67e8f9'
+          ctx.font = 'bold 9px monospace'
+          ctx.fillText(`🚤 ${label}`, pt.x - 24, pt.y - 10)
+        }
+
+        drawBoatMarker(boat1, 'RESCUE BOAT #1')
+        drawBoatMarker(boat2, 'RESCUE BOAT #2')
+
+        // Draw Pulsing Evacuation Corridor vector toward safe hospital
+        if (vulnerablePos && hospitalPos) {
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)'
+          ctx.lineWidth = 2
+          ctx.setLineDash([6, 4])
+          ctx.lineDashOffset = -tick * 10
+          ctx.beginPath()
+          ctx.moveTo(vulnerablePos.x, vulnerablePos.y)
+          ctx.quadraticCurveTo(originX + 20, originY - 10, hospitalPos.x, hospitalPos.y)
+          ctx.stroke()
+          ctx.setLineDash([])
+
+          ctx.fillStyle = '#34d399'
+          ctx.font = 'bold 8px monospace'
+          ctx.fillText('EVACUATION ROUTE', originX - 30, originY - 24)
+        }
+        ctx.restore()
+      }
+
+      // Radar Scan Animation while AI Engine is Computing
+      if (loading) {
+        ctx.save()
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.7)'
+        ctx.lineWidth = 2
+        const radarRadius = (tick * 40) % (width / 2)
+        ctx.beginPath()
+        ctx.arc(originX, originY, radarRadius, 0, Math.PI * 2)
+        ctx.stroke()
+
+        ctx.fillStyle = 'rgba(14, 116, 144, 0.85)'
+        ctx.font = 'bold 12px monospace'
+        ctx.fillText('⚡ AI SIMULATING WATER SURGE & CASCADE HAZARDS...', originX - 160, originY - 40)
+        ctx.restore()
+      }
+
       animationId = requestAnimationFrame(render)
     }
 
@@ -252,11 +331,12 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
     return () => {
       cancelAnimationFrame(animationId)
     }
-  }, [severity, blockedRoads, affectedPop])
+  }, [severity, blockedRoads, affectedPop, result, loading])
 
   // Count how many tiles are currently submerged
   const currentWaterHeight = 0.35 + severity * 0.35
   const submergedCount = TERRAIN_TILES.filter((t) => t.z <= currentWaterHeight).length
+  const shortages = result?.results?.shortages || []
 
   return (
     <div className="relative rounded-xl border border-navy-700 bg-navy-950 overflow-hidden shadow-2xl">
@@ -272,7 +352,7 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
         <div className="flex items-center gap-2">
           <div className="bg-navy-900/85 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-navy-700 font-mono text-xs flex items-center gap-1.5">
             <Waves className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="text-text-muted">Flood Inundation Depth:</span>
+            <span className="text-text-muted">Inundation Depth:</span>
             <span className="text-cyan-300 font-bold">{(severity * 0.45).toFixed(2)}m</span>
           </div>
 
@@ -299,6 +379,24 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
         />
       </div>
 
+      {/* Dynamic Simulation Outcome Alert Bar */}
+      {result && (
+        <div className="px-4 py-2 bg-navy-900/95 border-t border-b border-navy-750 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span className="font-mono text-emerald-300 font-bold">
+              3D Tactical Simulation Applied:
+            </span>
+            <span className="text-text-muted">{result.results.summary}</span>
+          </div>
+          {shortages.length > 0 && (
+            <span className="text-red-400 font-bold font-mono flex items-center gap-1 shrink-0">
+              <AlertOctagon className="h-3.5 w-3.5" /> Shortfall: -{shortages[0].shortfall} {shortages[0].resource}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Bottom Tactical Map Legend */}
       <div className="p-3 bg-navy-900/90 border-t border-navy-800 flex flex-wrap items-center justify-between text-xs text-text-muted gap-2">
         <div className="flex flex-wrap items-center gap-4">
@@ -318,6 +416,12 @@ export default function IsometricFloodMap({ severity = 3, blockedRoads = 2, affe
             <span className="h-2.5 w-2.5 rounded-sm bg-cyan-500 border border-cyan-300" />
             <span>Rising Flood Water Plane</span>
           </div>
+          {result && (
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-ping" />
+              <span className="text-cyan-300 font-semibold">Active Rescue Boats Deployed</span>
+            </div>
+          )}
         </div>
 
         <div className="font-mono text-[11px] text-accent flex items-center gap-1">
