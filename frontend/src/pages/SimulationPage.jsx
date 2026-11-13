@@ -87,219 +87,246 @@ function ResourceRow({ label, data }) {
 }
 
 
-function Building({ x, y, scale = 1, tone = 'slate', flooded = false, label }) {
-  const palettes = {
-    slate: ['#334155', '#1e293b', '#475569'],
-    blue: ['#1d4ed8', '#1e40af', '#3b82f6'],
-    amber: ['#b45309', '#92400e', '#d97706'],
-  }
-  const [front, side, roof] = palettes[tone]
+// ADDITIONAL VISUAL ONLY: this component does not call or modify any backend/API.
+function FloodVisualization({ severity = 1, blockedRoads = 0, affectedPopulation = 0 }) {
+  const level = Math.max(1, Math.min(5, Number(severity) || 1))
+  const waterTop = 263 - (level * 27)
+  const riskLabel = level >= 5 ? 'EXTREME INUNDATION' : level >= 4 ? 'SEVERE FLOODING' : level >= 3 ? 'RISING FLOODWATER' : level >= 2 ? 'FLOOD WATCH' : 'LOW WATER LEVEL'
+
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`}>
-      <polygon points="0,0 34,-18 68,0 34,19" fill={roof} stroke="#94a3b8" strokeOpacity=".45" />
-      <polygon points="0,0 34,19 34,72 0,53" fill={front} stroke="#94a3b8" strokeOpacity=".25" />
-      <polygon points="34,19 68,0 68,53 34,72" fill={side} stroke="#94a3b8" strokeOpacity=".25" />
-      {[0, 1, 2].map((i) => (
-        <g key={i}>
-          <polygon points={`${8 + i * 8},${10 + i * 0} ${16 + i * 8},${6 + i * 0} ${16 + i * 8},${17 + i * 0} ${8 + i * 8},${21 + i * 0}`} fill={flooded ? '#fbbf24' : '#7dd3fc'} opacity=".9" />
-          <polygon points={`${42 + i * 7},${17 - i * 4} ${49 + i * 7},${13 - i * 4} ${49 + i * 7},${24 - i * 4} ${42 + i * 7},${28 - i * 4}`} fill={flooded ? '#fbbf24' : '#7dd3fc'} opacity=".85" />
-        </g>
-      ))}
-      {flooded && <path d="M-2 48 Q10 43 22 48 T46 48 T70 48" fill="none" stroke="#67e8f9" strokeWidth="3" />}
-      {label && <text x="34" y="-27" textAnchor="middle" fill="#dbeafe" fontSize="10" fontWeight="600">{label}</text>}
-    </g>
-  )
-}
-
-function FloodTerrain({ scenario }) {
-  const [level, setLevel] = useState(Math.max(18, scenario.inputs.disaster_severity * 16))
-  const [playing, setPlaying] = useState(false)
-  const severity = Number(scenario.inputs.disaster_severity) || 1
-  const affected = Number(scenario.inputs.affected_population) || 0
-  const roadImpact = Math.min(8, Math.max(0, Math.round((level - 30) / 9)))
-  const waterTop = 340 - level * 1.35
-  const risk = level >= 76 ? 'CRITICAL' : level >= 55 ? 'HIGH' : level >= 32 ? 'MODERATE' : 'LOW'
-
-  useEffect(() => {
-    if (!playing) return undefined
-    const timer = window.setInterval(() => {
-      setLevel((v) => {
-        if (v >= 100) {
-          setPlaying(false)
-          return 100
+    <section className="mb-5 overflow-hidden rounded-xl border border-cyan-400/20 bg-[#071426]">
+      <style>{`
+        @keyframes crisislens-wave-a {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-42px); }
         }
-        return Math.min(100, v + 2)
-      })
-    }, 90)
-    return () => window.clearInterval(timer)
-  }, [playing])
+        @keyframes crisislens-wave-b {
+          0% { transform: translateX(-25px); }
+          100% { transform: translateX(22px); }
+        }
+        @keyframes crisislens-water-glow {
+          0%, 100% { opacity: .35; }
+          50% { opacity: .72; }
+        }
+        @keyframes crisislens-beacon {
+          0%, 100% { opacity: .45; }
+          50% { opacity: 1; }
+        }
+        @keyframes crisislens-radar {
+          0% { transform: scale(.65); opacity: .7; }
+          100% { transform: scale(1.45); opacity: 0; }
+        }
+        .crisislens-wave-a { animation: crisislens-wave-a 5s linear infinite; }
+        .crisislens-wave-b { animation: crisislens-wave-b 7s linear infinite; }
+        .crisislens-water-glow { animation: crisislens-water-glow 3s ease-in-out infinite; }
+        .crisislens-beacon { animation: crisislens-beacon 1.4s ease-in-out infinite; }
+        .crisislens-radar { transform-origin: center; animation: crisislens-radar 2s ease-out infinite; }
+      `}</style>
 
-  useEffect(() => {
-    setLevel(Math.max(18, severity * 16))
-    setPlaying(false)
-  }, [scenario.key, severity])
-
-  return (
-    <Card className="overflow-hidden border-cyan-400/20">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
-            <p className="text-xs font-semibold uppercase tracking-[.18em] text-cyan-300">Live what-if environment</p>
-          </div>
-          <h3 className="mt-1 text-lg font-semibold text-white">Bellandur flood-zone · 3D tactical view</h3>
-          <p className="mt-1 text-xs text-slate-400">Illustrative terrain model · not a live geographic or hydrological feed</p>
+          <p className="text-xs font-semibold uppercase tracking-[.18em] text-cyan-300">Live what-if environment</p>
+          <h3 className="mt-1 text-sm font-semibold text-white">Urban flood propagation model</h3>
         </div>
-        <Badge tone={risk === 'CRITICAL' ? 'critical' : risk === 'HIGH' ? 'critical' : 'verify'}>{risk} RISK</Badge>
+        <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] font-bold tracking-wider text-cyan-200">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-300" />
+          SIMULATION ACTIVE
+        </span>
       </div>
 
-      <div className="relative mt-4 overflow-hidden rounded-xl border border-slate-700 bg-[#071426]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_15%,rgba(14,165,233,.18),transparent_60%)]" />
-        <div className="absolute left-3 top-3 z-10 rounded-md border border-white/10 bg-slate-950/75 px-3 py-2 backdrop-blur">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">Water level index</p>
-          <p className="font-mono text-2xl font-bold text-cyan-300">{level}<span className="text-xs text-slate-400"> / 100</span></p>
-        </div>
-        <div className="absolute right-3 top-3 z-10 rounded-md border border-white/10 bg-slate-950/75 px-3 py-2 text-right backdrop-blur">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">Forecast horizon</p>
-          <p className="font-mono text-lg font-semibold text-white">+{Math.round(level * .6)} min</p>
-        </div>
-
-        <svg viewBox="0 0 900 500" role="img" aria-label={`Isometric flood scenario at water level ${level} out of 100`} className="block w-full">
+      <div className="relative">
+        <svg viewBox="0 0 760 390" role="img" aria-label={`Illustrative isometric city flood visualization at severity ${level} out of 5`} className="block h-auto w-full">
           <defs>
-            <linearGradient id="terrain" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#29465a" /><stop offset="1" stopColor="#142b3c" />
+            <linearGradient id="cl-sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#102c49" />
+              <stop offset="100%" stopColor="#0a1b30" />
             </linearGradient>
-            <linearGradient id="flood" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#67e8f9" stopOpacity=".82" /><stop offset="1" stopColor="#0369a1" stopOpacity=".88" />
+            <linearGradient id="cl-water" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#38d9f5" stopOpacity=".76" />
+              <stop offset="100%" stopColor="#0875b9" stopOpacity=".92" />
             </linearGradient>
-            <pattern id="terrainGrid" width="36" height="36" patternUnits="userSpaceOnUse" patternTransform="skewY(-26)">
-              <path d="M36 0H0V36" fill="none" stroke="#8bb4c8" strokeOpacity=".12" strokeWidth="1" />
-            </pattern>
-            <filter id="glow"><feGaussianBlur stdDeviation="5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+            <linearGradient id="cl-building" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#7894ad" />
+              <stop offset="100%" stopColor="#344d68" />
+            </linearGradient>
+            <clipPath id="cl-scene-clip"><rect x="0" y="0" width="760" height="390" /></clipPath>
           </defs>
-          <path d="M80 160 L500 35 L835 170 L420 455 Z" fill="url(#terrain)" stroke="#5d8498" strokeWidth="2" />
-          <path d="M80 160 L500 35 L835 170 L420 455 Z" fill="url(#terrainGrid)" />
-          <path d="M100 330 L500 205 L800 320" fill="none" stroke="#94a3b8" strokeWidth="30" strokeOpacity=".28" />
-          <path d="M100 330 L500 205 L800 320" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="14 10" strokeOpacity=".65" />
-          <path d="M210 125 L400 260 L670 365" fill="none" stroke="#94a3b8" strokeWidth="20" strokeOpacity=".25" />
-          <path d="M210 125 L400 260 L670 365" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="12 9" strokeOpacity=".6" />
-          <path d="M145 250 Q260 180 360 230 T580 265 T790 230" fill="none" stroke="#0e7490" strokeWidth="72" strokeOpacity=".55" />
-          <path d={`M145 ${Math.max(160, waterTop - 22)} Q260 ${Math.max(115, waterTop - 65)} 360 ${Math.max(160, waterTop - 18)} T580 ${Math.max(185, waterTop + 8)} T790 ${Math.max(160, waterTop - 20)} L790 320 Q580 355 360 300 T145 320 Z`} fill="url(#flood)" opacity={Math.min(.95, .25 + level / 130)} />
-          <path d={`M145 ${Math.max(160, waterTop - 22)} Q260 ${Math.max(115, waterTop - 65)} 360 ${Math.max(160, waterTop - 18)} T580 ${Math.max(185, waterTop + 8)} T790 ${Math.max(160, waterTop - 20)}`} fill="none" stroke="#a5f3fc" strokeWidth="3" filter="url(#glow)" />
-          <g opacity=".85" stroke="#cffafe" strokeWidth="2" fill="none">
-            {[0,1,2,3,4].map(i => <path key={i} d={`M${180+i*112} ${250+Math.sin(i)*20} q22 -9 44 0`} opacity={.25 + (i%2)*.25} />)}
-          </g>
 
-          <Building x={155} y={175} scale={1.05} tone="blue" label="SECTOR 01" flooded={level > 55} />
-          <Building x={300} y={105} scale={.9} tone="slate" label="RESIDENTIAL" flooded={level > 72} />
-          <Building x={455} y={125} scale={1.15} tone="amber" label="HOSPITAL" flooded={level > 82} />
-          <Building x={625} y={190} scale={.95} tone="blue" label="SECTOR 03" flooded={level > 45} />
-          <Building x={720} y={285} scale={.78} tone="slate" flooded={level > 62} />
-          <Building x={365} y={300} scale={.82} tone="amber" flooded={level > 65} />
+          <g clipPath="url(#cl-scene-clip)">
+            <rect width="760" height="390" fill="url(#cl-sky)" />
+            <path d="M0 285 L380 90 L760 285 L380 390 Z" fill="#172e43" stroke="#42617a" strokeWidth="1.5" />
+            <path d="M0 285 L380 90 L760 285" fill="none" stroke="#385873" strokeDasharray="5 8" />
+            <path d="M85 330 L380 178 L675 330" fill="none" stroke="#49657c" strokeWidth="2" strokeDasharray="9 9" />
+            <path d="M195 390 L380 294 L565 390" fill="none" stroke="#49657c" strokeWidth="2" strokeDasharray="9 9" />
 
-          <g>
-            <path d="M510 210 L565 192 L603 207 L548 225 Z" fill="#64748b" stroke="#cbd5e1" strokeWidth="2" />
-            <path d="M548 225 L603 207 L603 220 L548 238 Z" fill="#334155" />
-            <path d="M510 210 L548 225 L548 238 L510 223 Z" fill="#475569" />
-            <path d="M520 210 L575 193" stroke="#fbbf24" strokeWidth="3" strokeDasharray="6 4" />
-            {level > 48 && <path d="M505 232 Q550 220 610 238" stroke="#fb7185" strokeWidth="5" fill="none" strokeDasharray="7 5" />}
-            <text x="555" y="178" textAnchor="middle" fill={level > 48 ? '#fda4af' : '#fde68a'} fontSize="12" fontWeight="bold">BRIDGE {level > 48 ? 'AT RISK' : 'OPEN'}</text>
-          </g>
+            {/* City blocks and buildings */}
+            <g stroke="#9bb4c8" strokeWidth="1">
+              <polygon points="112,226 160,201 207,225 159,251" fill="#49647b" />
+              <polygon points="112,226 159,251 159,313 112,288" fill="#2b4259" />
+              <polygon points="159,251 207,225 207,287 159,313" fill="#3a536b" />
+              <polygon points="124,216 160,197 195,215 159,235" fill="#9ab2c6" />
+              <polygon points="124,216 159,235 159,251 124,232" fill="#425c73" />
+              <polygon points="159,235 195,215 195,231 159,251" fill="#5d7890" />
+              <path d="M137 242 v20 M151 249 v20 M174 247 v19 M189 239 v20" stroke="#a9d7e8" strokeWidth="3" />
 
-          <g transform="translate(245 300)">
-            <circle r="17" fill="#052e2b" stroke="#34d399" strokeWidth="2" />
-            <path d="M-9 2 L0 -7 L9 2 L6 2 L6 9 L-6 9 L-6 2Z" fill="#6ee7b7" />
-            <text x="0" y="32" fill="#a7f3d0" textAnchor="middle" fontSize="11">RESCUE BASE</text>
-          </g>
-          <g transform="translate(690 110)">
-            <circle r="16" fill="#451a03" stroke="#fb923c" strokeWidth="2" />
-            <path d="M-8 0 L0 -8 L8 0 L0 8Z" fill="#fdba74" />
-            <text x="0" y="29" fill="#fed7aa" textAnchor="middle" fontSize="11">SHELTER</text>
-          </g>
+              <polygon points="280,163 329,138 377,162 328,188" fill="#526f86" />
+              <polygon points="280,163 328,188 328,275 280,249" fill="#304a62" />
+              <polygon points="328,188 377,162 377,249 328,275" fill="url(#cl-building)" />
+              <polygon points="292,154 329,135 365,153 328,173" fill="#a2b8c9" />
+              <path d="M297 181 v22 M313 189 v22 M344 184 v22 M361 175 v22 M297 217 v22 M313 225 v22 M344 220 v22 M361 211 v22" stroke="#a8d7e7" strokeWidth="4" />
 
-          {level > 38 && <g>
-            <path d="M245 300 Q360 275 440 270 T620 245" fill="none" stroke="#fbbf24" strokeWidth="4" strokeDasharray="9 7" />
-            <text x="440" y="290" fill="#fde68a" fontSize="12" fontWeight="bold">ALTERNATE RESCUE ROUTE</text>
-          </g>}
-          {level > 58 && <g>
-            <path d="M100 330 L500 205 L800 320" fill="none" stroke="#fb7185" strokeWidth="8" strokeOpacity=".85" strokeDasharray="16 10" />
-            <rect x="455" y="340" width="190" height="28" rx="6" fill="#7f1d1d" stroke="#fb7185" />
-            <text x="550" y="359" fill="#fff1f2" textAnchor="middle" fontSize="12" fontWeight="bold">ROAD ACCESS CUT OFF</text>
-          </g>}
-          <text x="450" y="480" fill="#94a3b8" textAnchor="middle" fontSize="11" letterSpacing="2">ISOMETRIC TERRAIN · FLOOD EXTENT PREVIEW</text>
+              <polygon points="473,221 520,197 568,221 520,246" fill="#58748b" />
+              <polygon points="473,221 520,246 520,310 473,284" fill="#2c455d" />
+              <polygon points="520,246 568,221 568,285 520,310" fill="#405a72" />
+              <path d="M486 232 v21 M503 241 v21 M536 238 v21 M553 229 v21" stroke="#a8d7e7" strokeWidth="4" />
+
+              <polygon points="600,267 635,249 671,267 635,286" fill="#526e85" />
+              <polygon points="600,267 635,286 635,332 600,313" fill="#2c455d" />
+              <polygon points="635,286 671,267 671,313 635,332" fill="#405a72" />
+            </g>
+
+            {/* Roads and bridge */}
+            <path d="M38 315 L380 137 L722 315" fill="none" stroke="#a7b9c8" strokeWidth="17" opacity=".18" />
+            <path d="M38 315 L380 137 L722 315" fill="none" stroke="#b6c7d4" strokeWidth="2" strokeDasharray="12 10" opacity=".65" />
+            <path d="M355 160 L426 197" stroke="#e2c98b" strokeWidth="13" opacity=".8" />
+            <path d="M355 160 L426 197" stroke="#263e54" strokeWidth="2" strokeDasharray="7 6" />
+            <path d="M352 149 L352 175 M430 185 L430 210" stroke="#d8e4ec" strokeWidth="3" />
+
+            {/* Animated water sheet rises with the severity slider */}
+            <path d={`M0 ${waterTop + 18} Q95 ${waterTop - 5} 190 ${waterTop + 14} T380 ${waterTop + 8} T570 ${waterTop + 15} T760 ${waterTop + 4} L760 390 L0 390 Z`} fill="url(#cl-water)" className="crisislens-water-glow" />
+            <path d={`M-50 ${waterTop + 13} Q40 ${waterTop - 8} 130 ${waterTop + 13} T310 ${waterTop + 13} T490 ${waterTop + 13} T670 ${waterTop + 13} T850 ${waterTop + 13}`} fill="none" stroke="#a5f3fc" strokeWidth="3" opacity=".9" className="crisislens-wave-a" />
+            <path d={`M-30 ${waterTop + 28} Q60 ${waterTop + 8} 150 ${waterTop + 28} T330 ${waterTop + 28} T510 ${waterTop + 28} T690 ${waterTop + 28} T870 ${waterTop + 28}`} fill="none" stroke="#38bdf8" strokeWidth="2" opacity=".85" className="crisislens-wave-b" />
+
+            {/* Flood warning / rescue markers */}
+            <g className="crisislens-beacon">
+              <circle cx="430" cy="177" r="8" fill="#fb7185" />
+              <circle cx="430" cy="177" r="17" fill="none" stroke="#fb7185" strokeWidth="2" className="crisislens-radar" />
+            </g>
+            <g transform="translate(82 183)">
+              <path d="M0 12 L10 -4 L20 12 Z" fill="#fbbf24" />
+              <text x="27" y="10" fill="#fde68a" fontSize="11" fontWeight="700">SECTOR 01</text>
+            </g>
+            <g transform="translate(535 151)">
+              <circle cx="0" cy="0" r="6" fill="#4ade80" />
+              <text x="12" y="4" fill="#bbf7d0" fontSize="11" fontWeight="700">RESCUE POINT</text>
+            </g>
+            <g transform="translate(380 25)">
+              <rect x="-95" y="-13" width="190" height="28" rx="6" fill="#06111f" stroke="#31516c" />
+              <text x="0" y="5" textAnchor="middle" fill="#d9f5ff" fontSize="11" fontWeight="700" letterSpacing="1">URBAN FLOOD ZONE</text>
+            </g>
+          </g>
         </svg>
-      </div>
 
-      <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-white">Storm intensity control</p>
-            <p className="text-xs text-slate-400">Move the slider to raise or lower the simulated flood plane</p>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => { setLevel(18); setPlaying(false) }}>Reset</Button>
-            <Button size="sm" onClick={() => setPlaying(v => !v)}>{playing ? 'Pause forecast' : level >= 100 ? 'Replay forecast' : '▶ Play forecast'}</Button>
-          </div>
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-[#06111f]/85 px-3 py-2 backdrop-blur">
+          <p className="text-[9px] uppercase tracking-widest text-slate-400">Storm intensity</p>
+          <p className="text-lg font-bold text-white">{level}<span className="text-xs font-normal text-slate-400"> / 5</span></p>
         </div>
-        <input aria-label="Simulated flood level" type="range" min="10" max="100" value={level} onChange={(e) => { setLevel(Number(e.target.value)); setPlaying(false) }} className="mt-4 w-full accent-cyan-400" />
-        <div className="flex justify-between text-[10px] uppercase tracking-wider text-slate-500"><span>Low water</span><span>Road flooding</span><span>Severe inundation</span></div>
+        <div className="pointer-events-none absolute bottom-3 right-3 rounded-md border border-rose-300/30 bg-[#06111f]/90 px-3 py-2">
+          <p className="text-[9px] font-bold tracking-wider text-rose-300">{riskLabel}</p>
+          <p className="mt-1 text-[10px] text-slate-300">Illustrative flood level</p>
+        </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-lg border border-slate-700 bg-slate-900 p-3"><p className="text-[10px] uppercase text-slate-400">People in zone</p><p className="mt-1 text-xl font-bold text-white">{fmt(affected)}</p></div>
-        <div className="rounded-lg border border-slate-700 bg-slate-900 p-3"><p className="text-[10px] uppercase text-slate-400">Road segments at risk</p><p className="mt-1 text-xl font-bold text-amber-300">{roadImpact}</p></div>
-        <div className="rounded-lg border border-slate-700 bg-slate-900 p-3"><p className="text-[10px] uppercase text-slate-400">Bridge status</p><p className={`mt-1 text-sm font-bold ${level > 48 ? 'text-rose-300' : 'text-emerald-300'}`}>{level > 48 ? 'ACCESS AT RISK' : 'PASSABLE'}</p></div>
-        <div className="rounded-lg border border-slate-700 bg-slate-900 p-3"><p className="text-[10px] uppercase text-slate-400">Simulation mode</p><p className="mt-1 text-sm font-bold text-cyan-300">ISOLATED · TRUE</p></div>
+      <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10 bg-[#0a1b30]">
+        <div className="px-3 py-3">
+          <p className="text-[10px] text-slate-400">Affected population</p>
+          <p className="mt-1 text-sm font-semibold text-white">{fmt(affectedPopulation)}</p>
+        </div>
+        <div className="px-3 py-3">
+          <p className="text-[10px] text-slate-400">Reported blocked roads</p>
+          <p className="mt-1 text-sm font-semibold text-amber-300">{fmt(blockedRoads)}</p>
+        </div>
+        <div className="px-3 py-3">
+          <p className="text-[10px] text-slate-400">Model severity</p>
+          <p className="mt-1 text-sm font-semibold text-cyan-300">{level} / 5</p>
+        </div>
       </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Demo note: this is a visual, illustrative scenario model. Water level, road impacts and forecast time are presentation estimates—not validated flood predictions. No live dispatch or incident data is changed.</p>
-    </Card>
+      <p className="px-4 py-2 text-[10px] leading-relaxed text-slate-500">
+        Visual demonstration only — water animation is illustrative and does not represent measured terrain, live sensor data or a validated flood forecast.
+      </p>
+    </section>
   )
 }
+
 
 function ResultPanel({ scenario }) {
   const anyShort = scenario.teams.shortfall > 0 || scenario.ambulances.shortfall > 0
   return (
-    <div className="space-y-5">
-      <FloodTerrain scenario={scenario} />
-      <Card className="border-accent/30">
-        <CardHeader
-          title={scenario.name}
-          subtitle={scenario.generatedAt ? `Generated ${formatDateTime(scenario.generatedAt)}` : 'Latest result'}
-          action={<Badge tone="verify">SIMULATION</Badge>}
-        />
-        <div role="status" className={cn('mb-4 rounded-lg border px-4 py-3 text-sm', anyShort ? 'border-critical/40 bg-critical/10 text-red-200' : 'border-verified/40 bg-verified/10 text-green-200')}>
-          {scenario.summary || (anyShort ? 'Some resources fall short in this scenario.' : 'Available resources cover the estimated demand.')}
+    <Card className="border-accent/30">
+      <CardHeader
+        title={scenario.name}
+        subtitle={scenario.generatedAt ? `Generated ${formatDateTime(scenario.generatedAt)}` : 'Latest result'}
+        action={<Badge tone="verify">SIMULATION</Badge>}
+      />
+
+      <FloodVisualization
+        severity={scenario.inputs.disaster_severity}
+        blockedRoads={scenario.inputs.blocked_roads}
+        affectedPopulation={scenario.inputs.affected_population}
+      />
+
+      <div
+        role="status"
+        className={cn(
+          'mb-4 rounded-lg border px-4 py-3 text-sm',
+          anyShort ? 'border-critical/40 bg-critical/10 text-red-200' : 'border-verified/40 bg-verified/10 text-green-200',
+        )}
+      >
+        {scenario.summary || (anyShort ? 'Some resources fall short in this scenario.' : 'Available resources cover the estimated demand.')}
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-navy-700">
+        <table className="w-full text-left text-sm">
+          <caption className="sr-only">Resources required compared with resources available</caption>
+          <thead className="bg-navy-900 text-xs uppercase tracking-wide text-text-muted">
+            <tr>
+              {['Resource', 'Required', 'Available', 'Coverage', 'Status'].map((h) => (
+                <th key={h} scope="col" className="px-4 py-2 font-medium">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-navy-700 bg-navy-800">
+            <ResourceRow label="Rescue teams" data={scenario.teams} />
+            <ResourceRow label="Ambulances" data={scenario.ambulances} />
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-navy-900 p-3">
+          <p className="text-xs text-text-muted">Estimated response delay</p>
+          <p className="mt-1 text-2xl font-bold text-accent">{scenario.delay === null ? '—' : `${scenario.delay} min`}</p>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-navy-700">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Resources required compared with resources available</caption>
-            <thead className="bg-navy-900 text-xs uppercase tracking-wide text-text-muted">
-              <tr>{['Resource', 'Required', 'Available', 'Coverage', 'Status'].map((h) => <th key={h} scope="col" className="px-4 py-2 font-medium">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-navy-700 bg-navy-800">
-              <ResourceRow label="Rescue teams" data={scenario.teams} />
-              <ResourceRow label="Ambulances" data={scenario.ambulances} />
-            </tbody>
-          </table>
+        <div className="rounded-lg bg-navy-900 p-3">
+          <p className="text-xs text-text-muted">Disaster severity</p>
+          <p className="mt-1 text-2xl font-bold">{scenario.inputs.disaster_severity}<span className="text-sm text-text-muted"> / 5</span></p>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg bg-navy-900 p-3"><p className="text-xs text-text-muted">Estimated response delay</p><p className="mt-1 text-2xl font-bold text-accent">{scenario.delay === null ? '—' : `${scenario.delay} min`}</p></div>
-          <div className="rounded-lg bg-navy-900 p-3"><p className="text-xs text-text-muted">Disaster severity</p><p className="mt-1 text-2xl font-bold">{scenario.inputs.disaster_severity}<span className="text-sm text-text-muted"> / 5</span></p></div>
-          <div className="rounded-lg bg-navy-900 p-3"><p className="text-xs text-text-muted">Blocked roads</p><p className="mt-1 text-2xl font-bold">{fmt(scenario.inputs.blocked_roads)}</p></div>
+        <div className="rounded-lg bg-navy-900 p-3">
+          <p className="text-xs text-text-muted">Blocked roads</p>
+          <p className="mt-1 text-2xl font-bold">{fmt(scenario.inputs.blocked_roads)}</p>
         </div>
-        <h3 className="mb-2 mt-5 text-sm font-medium">Changed priorities</h3>
-        {scenario.changes.length === 0 ? <p className="text-sm text-text-muted">No real incident changes rank in this scenario.</p> : (
-          <ul className="space-y-2 text-sm">{scenario.changes.map((c) => (
+      </div>
+
+      <h3 className="mb-2 mt-5 text-sm font-medium">Changed priorities</h3>
+      {scenario.changes.length === 0 ? (
+        <p className="text-sm text-text-muted">No real incident changes rank in this scenario.</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {scenario.changes.map((c) => (
             <li key={c.incident_id} className="rounded-md bg-navy-900 px-3 py-2">
               <Link to={`/incidents/${c.incident_id}`} className="font-medium text-accent hover:underline">{c.title || c.incident_id}</Link>
-              <span className="ml-2 inline-flex items-center gap-1 font-mono text-xs">rank {c.baseline_rank ?? '?'} <ArrowRight className="h-3 w-3" aria-hidden="true" /> {c.scenario_rank ?? '?'}</span>
+              <span className="ml-2 inline-flex items-center gap-1 font-mono text-xs">
+                rank {c.baseline_rank ?? '?'} <ArrowRight className="h-3 w-3" aria-hidden="true" /> {c.scenario_rank ?? '?'}
+              </span>
               {c.reason && <span className="block text-xs text-text-muted">{c.reason}</span>}
             </li>
-          ))}</ul>
-        )}
-        <p className="mt-4 text-xs text-text-muted">This is a what-if estimate. Real incident scores are unchanged, nobody is dispatched, and a human decides how to use these results.</p>
-      </Card>
-    </div>
+          ))}
+        </ul>
+      )}
+      <p className="mt-4 text-xs text-text-muted">
+        This is a what-if estimate. Real incident scores are unchanged, nobody is dispatched, and a human decides how to use these results.
+      </p>
+    </Card>
   )
 }
 
@@ -482,7 +509,7 @@ export default function SimulationPage() {
     <>
       <PageHeader
         title="What-if Simulation Centre"
-        description="Explore an illustrative 3D flood scenario, test resource readiness, and see how rising water can threaten roads and rescue access. Estimates only—no live dispatch."
+        description="Test a hypothetical disaster and the resources you have. Results are estimates. They never change real incidents, and humans decide what to do with them."
         actions={<Badge tone="verify">Hypothetical only</Badge>}
       />
 
