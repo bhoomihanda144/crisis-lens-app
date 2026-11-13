@@ -1,0 +1,27 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# Environment files
+.env
+.env.local
+*.log
+
+# Temp & Artifacts
+crisis-lens/
+*.tar
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

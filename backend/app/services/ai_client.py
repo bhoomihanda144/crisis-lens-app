@@ -6,10 +6,13 @@ even when Member 3's service is offline or in development.
 """
 import httpx
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from app.core.config import settings
 from app.utils.datetime_utils import now_utc_iso, calculate_freshness
 from app.schemas.analysis import AnalysisObject
+from app.schemas.evidence import EvidenceGraphResponse
+from app.schemas.priority import PriorityResponse
+from app.schemas.simulation import SimulationRequest, SimulationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,175 @@ class AIClient:
         # Deterministic contract-compliant analysis engine
         logger.info("Running deterministic fallback analysis (engine_version=%s).", FALLBACK_ENGINE_VERSION)
         return AIClient._compute_deterministic_analysis(report_data, existing_reports)
+
+    @staticmethod
+    def generate_evidence_graph(
+        incident_id: str,
+        reports: List[Dict[str, Any]],
+        conflicts: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[EvidenceGraphResponse]:
+        """
+        Calls Member 3's AI Engine endpoint:
+        POST /incidents/{incident_id}/evidence-graph
+        Sends incident reports and explicitly identified conflicts.
+        Returns validated EvidenceGraphResponse if successful, or None on failure/timeout.
+        """
+        if not settings.AI_ENGINE_URL:
+            return None
+
+        url = f"{settings.AI_ENGINE_URL.rstrip('/')}/incidents/{incident_id}/evidence-graph"
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    url,
+                    json={
+                        "incident_id": incident_id,
+                        "reports": reports,
+                        "conflicts": conflicts or [],
+                    },
+                )
+                if resp.status_code == 200:
+                    raw_data = resp.json()
+                    validated = EvidenceGraphResponse.model_validate(raw_data)
+                    return validated
+                else:
+                    logger.warning(
+                        "AI Engine evidence-graph at %s returned non-200 status %s for incident %s.",
+                        url,
+                        resp.status_code,
+                        incident_id,
+                    )
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "AI Engine evidence-graph request timed out for incident %s (%s).",
+                incident_id,
+                type(exc).__name__,
+            )
+        except httpx.ConnectError as exc:
+            logger.warning(
+                "AI Engine connection failed for evidence-graph at %s (%s).",
+                url,
+                type(exc).__name__,
+            )
+        except Exception as exc:
+            logger.warning(
+                "AI Engine evidence-graph failed or returned invalid response (%s: %s).",
+                type(exc).__name__,
+                exc,
+            )
+        return None
+
+    @staticmethod
+    def get_priority_ranking(
+        incidents: List[Dict[str, Any]],
+        sort: str = "urgency",
+    ) -> Optional[PriorityResponse]:
+        """
+        Calls Member 3's AI Engine endpoint:
+        POST /incidents/priority?sort={sort}
+        Sends batch of incidents with reports and existing analysis.
+        Returns validated PriorityResponse if successful, or None on failure/timeout.
+        """
+        if not settings.AI_ENGINE_URL:
+            return None
+
+        url = f"{settings.AI_ENGINE_URL.rstrip('/')}/incidents/priority"
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    url,
+                    params={"sort": sort},
+                    json={
+                        "sort": sort,
+                        "incidents": incidents,
+                    },
+                )
+                if resp.status_code == 200:
+                    raw_data = resp.json()
+                    validated = PriorityResponse.model_validate(raw_data)
+                    return validated
+                else:
+                    logger.warning(
+                        "AI Engine priority ranking at %s returned non-200 status %s.",
+                        url,
+                        resp.status_code,
+                    )
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "AI Engine priority ranking timed out (%s).",
+                type(exc).__name__,
+            )
+        except httpx.ConnectError as exc:
+            logger.warning(
+                "AI Engine connection failed for priority ranking at %s (%s).",
+                url,
+                type(exc).__name__,
+            )
+        except Exception as exc:
+            logger.warning(
+                "AI Engine priority ranking failed or returned invalid response (%s: %s).",
+                type(exc).__name__,
+                exc,
+            )
+        return None
+
+    @staticmethod
+    def run_simulation(
+        payload: SimulationRequest,
+        incidents: Optional[List[Dict[str, Any]]] = None,
+        blocked_access_incident_ids: Optional[List[str]] = None,
+    ) -> Optional[SimulationResponse]:
+        """
+        Calls Member 3's AI Engine endpoint:
+        POST /simulation/run
+        Sends scenario inputs along with active incident context and road-access impact data.
+        Returns validated SimulationResponse if successful, or None on failure/timeout.
+        """
+        if not settings.AI_ENGINE_URL:
+            return None
+
+        url = f"{settings.AI_ENGINE_URL.rstrip('/')}/simulation/run"
+        request_body = {
+            "scenario_name": payload.scenario_name,
+            "affected_population": payload.affected_population,
+            "disaster_severity": payload.disaster_severity,
+            "rescue_teams": payload.rescue_teams,
+            "blocked_roads": payload.blocked_roads,
+            "available_ambulances": payload.available_ambulances,
+            "incidents": incidents or [],
+            "blocked_access_incident_ids": blocked_access_incident_ids or [],
+        }
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(url, json=request_body)
+                if resp.status_code == 200:
+                    raw_data = resp.json()
+                    validated = SimulationResponse.model_validate(raw_data)
+                    return validated
+                else:
+                    logger.warning(
+                        "AI Engine simulation at %s returned non-200 status %s.",
+                        url,
+                        resp.status_code,
+                    )
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "AI Engine simulation request timed out (%s).",
+                type(exc).__name__,
+            )
+        except httpx.ConnectError as exc:
+            logger.warning(
+                "AI Engine connection failed for simulation at %s (%s).",
+                url,
+                type(exc).__name__,
+            )
+        except Exception as exc:
+            logger.warning(
+                "AI Engine simulation failed or returned invalid response (%s: %s).",
+                type(exc).__name__,
+                exc,
+            )
+        return None
 
     @staticmethod
     def _compute_deterministic_analysis(
